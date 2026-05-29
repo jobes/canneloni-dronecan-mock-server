@@ -1,5 +1,5 @@
 import struct
-from typing import List
+from typing import List, Optional
 
 from constants import HEALTH_OK, MODE_OPERATIONAL
 from crc import compute_transfer_crc
@@ -77,8 +77,10 @@ def build_fix2_payload(
     v_d: float,
     sats_used: int,
     status: int,
-    mode: int,
-    sub_mode: int
+    mode: int = 0,
+    sub_mode: int = 0,
+    covariance: Optional[List[float]] = None,
+    pdop: float = 1.5
 ) -> bytes:
     """
     Serializes a uavcan.equipment.gnss.Fix2 DroneCAN message payload (Data Type ID 1063).
@@ -124,19 +126,22 @@ def build_fix2_payload(
     
     # 12. status: uint2 (3 = 3D Fix)
     bw.write_unsigned(status, 2)
-    
-    # 13. mode: uint4 (0 = Standalone status mode)
+
+    # 13. mode: uint4 (0 = Single)
     bw.write_unsigned(mode, 4)
-    
-    # 14. sub_mode: uint6 (0 = default sub-mode)
+
+    # 14. sub_mode: uint6
     bw.write_unsigned(sub_mode, 6)
-    
-    # 15. covariance: float16[<=36] (empty variable-length array, 6-bit length prefix = 0)
-    bw.write_unsigned(0, 6)
-    
-    # 16. pdop: float16 (Position Dilution of Precision)
-    bw.write_float16(1.5)
-    
-    # 17. ecef_position_velocity: ECEFPositionVelocity[<=1] (empty variable-length array utilizing TAO = 0 bits)
+
+    # 15. covariance: float16[<=36]
+    cov = covariance or []
+    if len(cov) > 36:
+        raise ValueError("covariance can contain at most 36 elements")
+    bw.write_unsigned(len(cov), 6)
+    for c in cov:
+        bw.write_float16(c)
+        
+    # 16. pdop: float16
+    bw.write_float16(pdop)
 
     return bw.get_bytes()

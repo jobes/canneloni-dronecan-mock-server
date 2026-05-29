@@ -71,10 +71,11 @@ class GNSSPublisher(BasePublisher):
                 v_n=active_pt.v_n,
                 v_e=active_pt.v_e,
                 v_d=active_pt.v_d,
-                sats_used=12,
+                sats_used=60,
                 status=3,  # 3D Fix
-                mode=0,    # Standalone
-                sub_mode=0
+                mode=3,    # Single
+                sub_mode= 58,
+                covariance=[9.0, 0.0, 0.0, 9.0, 0.0, 100.0]  # Upper-right 3x3 NED covariance: 3 m horiz, 10 m vert (m^2)
             )
 
             can_frames = build_multi_frame(payload, DRONECAN_GNSS_FIX2_SIGNATURE, self.tid)

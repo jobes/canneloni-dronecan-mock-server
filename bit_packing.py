@@ -11,22 +11,15 @@ class BitWriter:
     def write_unsigned(self, val: int, bits: int) -> None:
         """Writes an unsigned integer of a specific bit width."""
         val = int(val) & ((1 << bits) - 1)
-        if bits <= 8:
-            # Packed directly LSB-first
-            for i in range(bits):
+        # UAVCAN/DroneCAN scalar packing:
+        # - little-endian at the byte level
+        # - bits in each serialized byte emitted MSB-first
+        num_bytes = (bits + 7) // 8
+        for k in range(num_bytes):
+            low = k * 8
+            high = min(bits - 1, k * 8 + 7)
+            for i in range(high, low - 1, -1):
                 self.bit_string += str((val >> i) & 1)
-        else:
-            # Packed as little-endian bytes, each byte MSB-first.
-            # For each byte, we write the bits in decreasing order of their index.
-            # If the last byte is partial, we write only the remaining bits, in decreasing order of their index.
-            num_bytes = (bits + 7) // 8
-            temp_bits = ""
-            for k in range(num_bytes):
-                low = k * 8
-                high = min(bits - 1, k * 8 + 7)
-                for i in range(high, low - 1, -1):
-                    temp_bits += str((val >> i) & 1)
-            self.bit_string += temp_bits
 
     def write_signed(self, val: int, bits: int) -> None:
         """Writes a two's complement signed integer of a specific bit width."""
