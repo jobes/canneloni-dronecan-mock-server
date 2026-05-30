@@ -20,8 +20,9 @@ import socket
 import signal
 import json
 import yaml
-import os
 import logging
+from collections.abc import Awaitable, Mapping
+from typing import Protocol, cast, override
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
@@ -32,8 +33,21 @@ from clock import SystemClock
 
 logger = logging.getLogger(__name__)
 
+CanFrame = tuple[int, bytes]
+RemoteAddr = tuple[str, int]
+ConfigValue = int | float | str
+Config = dict[str, ConfigValue]
+
+
+class AsyncZeroconfProtocol(Protocol):
+    def async_register_service(self, info: ServiceInfo) -> Awaitable[object]: ...
+
+    def async_unregister_service(self, info: ServiceInfo) -> Awaitable[object]: ...
+
+    def async_close(self) -> Awaitable[object]: ...
+
 # Default configuration values (without host and remote_port, as they are dynamically learned)
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG: Config = {
     'local_port': 20001,
     'node_id': DRONECAN_NODE_ID,
     'node_name': DRONECAN_NODE_NAME,
@@ -42,46 +56,51 @@ DEFAULT_CONFIG = {
     'gpx': 'assets/flight.gpx'
 }
 
-def get_local_ip():
+def get_local_ip() -> str:
+    ip: str = '127.0.0.1'
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(('10.255.255.255', 1))
-        ip = s.getsockname()[0]
+        ip = cast(tuple[str, int], s.getsockname())[0]
     except Exception:
-        ip = '127.0.0.1'
+        pass
     finally:
         s.close()
     return ip
 
 
 class CannelloniProtocol(asyncio.DatagramProtocol):
-    def __init__(self, node):
-        self.node = node
-        self.transport = None
-        self.seq_no = 0
-        self.active_remote = None
+    def __init__(self, node: DroneCANMockNode) -> None:
+        self.node: DroneCANMockNode = node
+        self.transport: asyncio.DatagramTransport | None = None
+        self.seq_no: int = 0
+        self.active_remote: RemoteAddr | None = None
 
-    def connection_made(self, transport):
+    @override
+    def connection_made(self, transport: asyncio.DatagramTransport) -> None:
         self.transport = transport
 
-    def datagram_received(self, data, addr):
+    @override
+    def datagram_received(self, data: bytes, addr: RemoteAddr) -> None:
         # Dynamically discover/update the remote client address
         if self.active_remote != addr:
             logger.info(f"[System] Remote client connected: {addr[0]}:{addr[1]}. Starting periodic broadcasts.")
             self.active_remote = addr
 
-        resp_frames = []
+        resp_frames: list[CanFrame] = []
         for can_id, frame_data in parse_cannelloni_packet(data):
             resp = self.node.handle_frame(can_id, frame_data)
             if resp:
                 resp_frames.extend(resp)
         
         if resp_frames:
+            if self.transport is None:
+                return
             pkt = build_cannelloni_packet(self.seq_no, resp_frames)
             self.transport.sendto(pkt, addr)
             self.seq_no = (self.seq_no + 1) & 0xFF
 
-    def send_packet(self, frames, addr):
+    def send_packet(self, frames: list[CanFrame], addr: RemoteAddr) -> None:
         if not self.transport or not frames:
             return
         pkt = build_cannelloni_packet(self.seq_no, frames)
@@ -89,7 +108,7 @@ class CannelloniProtocol(asyncio.DatagramProtocol):
         self.seq_no = (self.seq_no + 1) & 0xFF
 
 
-async def publisher_task(node, protocol):
+async def publisher_task(node: DroneCANMockNode, protocol: CannelloniProtocol) -> None:
     try:
         while True:
             if protocol.active_remote is None:
@@ -106,15 +125,15 @@ async def publisher_task(node, protocol):
         pass
 
 
-async def run_server(config):
+async def run_server(config: Config) -> None:
     # Setup clock and node
     clock = SystemClock()
     node = DroneCANMockNode(
-        config['node_id'],
-        config['node_name'],
-        config['priority'],
-        config['heartbeat_interval'],
-        config['gpx'],
+        int(config['node_id']),
+        str(config['node_name']),
+        int(config['priority']),
+        float(config['heartbeat_interval']),
+        str(config['gpx']),
         clock
     )
     
@@ -125,12 +144,12 @@ async def run_server(config):
         "_cannelloni._udp.local.",
         "avionics-dronecan._cannelloni._udp.local.",
         addresses=[local_ip_bytes],
-        port=config['local_port'],
+        port=int(config['local_port']),
         properties={},
         server="mockavionics.local.",
     )
-    aiozc = AsyncZeroconf()
-    await aiozc.async_register_service(service_info)
+    aiozc: AsyncZeroconfProtocol = cast(AsyncZeroconfProtocol, AsyncZeroconf())
+    _ = await aiozc.async_register_service(service_info)
 
     logger.info("╔══════════════════════════════════════════════════════════╗")
     logger.info("║  Cannelloni DroneCAN Mock Node                         ║")
@@ -149,7 +168,7 @@ async def run_server(config):
     # Setup datagram socket endpoint
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(('0.0.0.0', config['local_port']))
+    sock.bind(('0.0.0.0', int(config['local_port'])))
     sock.setblocking(False)
 
     transport, protocol = await loop.create_datagram_endpoint(
@@ -162,45 +181,47 @@ async def run_server(config):
 
     stop_event = asyncio.Event()
 
-    def shutdown_handler():
-        stop_event.set()
+    def shutdown_handler() -> None:
+        _ = stop_event.set()
 
     # Register signals for clean shutdown
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, shutdown_handler)
+            _ = loop.add_signal_handler(sig, shutdown_handler)
         except NotImplementedError:
             pass
 
     try:
-        await stop_event.wait()
+        _ = await stop_event.wait()
     finally:
         logger.info("Stopping...")
-        pub_task.cancel()
+        _ = pub_task.cancel()
         try:
             await pub_task
         except asyncio.CancelledError:
             pass
         
-        transport.close()
-        await aiozc.async_unregister_service(service_info)
-        await aiozc.async_close()
-        sock.close()
+        _ = transport.close()
+        _ = await aiozc.async_unregister_service(service_info)
+        _ = await aiozc.async_close()
+        _ = sock.close()
         logger.info("Stopped.")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description='Cannelloni DroneCAN Mock Node')
-    parser.add_argument('--config', default='config.yaml',
-                        help='Path to YAML or JSON config file (default: config.yaml)')
-    parser.add_argument('--log-level', default='INFO',
-                        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                        help='Set the logging level (default: INFO)')
+    _ = parser.add_argument('--config', default='config.yaml',
+                            help='Path to YAML or JSON config file (default: config.yaml)')
+    _ = parser.add_argument('--log-level', default='INFO',
+                            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                            help='Set the logging level (default: INFO)')
     args = parser.parse_args()
+    config_path = cast(str, args.config)
+    log_level_name = cast(str, args.log_level)
 
     # Configure logging
-    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    log_level = int(getattr(logging, log_level_name.upper(), logging.INFO))
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s [%(levelname)s] %(message)s',
@@ -210,30 +231,44 @@ def main():
     config = DEFAULT_CONFIG.copy()
 
     try:
-        with open(args.config, 'r') as f:
-            if args.config.endswith(('.yaml', '.yml')):
-                loaded = yaml.safe_load(f)
+        with open(config_path, 'r') as f:
+            if config_path.endswith(('.yaml', '.yml')):
+                loaded_raw: object = cast(object, yaml.safe_load(f))
             else:
-                loaded = json.load(f)
-            
-            if loaded:
+                loaded_raw = cast(object, json.load(f))
+
+            if isinstance(loaded_raw, Mapping):
+                loaded_map = cast(Mapping[str, object], loaded_raw)
                 # Merge loaded configuration parameters
-                for key, val in loaded.items():
+                for key, val in loaded_map.items():
                     norm_key = key.replace('-', '_')
                     if norm_key in config:
                         default_val = config[norm_key]
-                        config[norm_key] = type(default_val)(val)
+                        if isinstance(default_val, bool):
+                            config[norm_key] = bool(val)
+                        elif isinstance(default_val, int):
+                            if isinstance(val, (int, float, str, bool)):
+                                config[norm_key] = int(val)
+                            else:
+                                config[norm_key] = default_val
+                        elif isinstance(default_val, float):
+                            if isinstance(val, (int, float, str, bool)):
+                                config[norm_key] = float(val)
+                            else:
+                                config[norm_key] = default_val
+                        else:
+                            config[norm_key] = str(val)
                     else:
-                        config[norm_key] = val
-        logger.info(f"Loaded configuration from {args.config}")
+                        config[norm_key] = str(val)
+        logger.info(f"Loaded configuration from {config_path}")
     except FileNotFoundError:
-        if args.config != 'config.yaml':
-            logger.error(f"Error: Configuration file {args.config} not found.")
+        if config_path != 'config.yaml':
+            logger.error(f"Error: Configuration file {config_path} not found.")
             return
         else:
             logger.warning("Warning: Default config.yaml not found. Running with default settings.")
     except Exception as e:
-        logger.error(f"Failed to load config {args.config}: {e}")
+        logger.error(f"Failed to load config {config_path}: {e}")
         return
 
     try:

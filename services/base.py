@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Tuple
+from can_utils import ParsedServiceCanId
 
 class BaseServiceHandler:
     """
@@ -6,11 +6,11 @@ class BaseServiceHandler:
     """
     def handle_request(
         self, 
-        parsed: Dict[str, Any], 
-        request_payload: bytes, 
-        req_tid: int, 
-        req_prio: int, 
-        uptime_sec: int
-    ) -> List[Tuple[int, bytes]]:
+        _parsed: ParsedServiceCanId,
+        _request_payload: bytes,
+        _req_tid: int,
+        _req_prio: int,
+        _uptime_sec: int,
+    ) -> list[tuple[int, bytes]]:
         """Handles a specific service request and returns response CAN frames."""
         return []

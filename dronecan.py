@@ -1,5 +1,4 @@
 import struct
-from typing import List, Optional
 
 from constants import HEALTH_OK, MODE_OPERATIONAL
 from crc import compute_transfer_crc
@@ -40,7 +39,7 @@ def build_getnodeinfo_response(uptime_sec: int, node_name: str) -> bytes:
     return payload
 
 
-def build_multi_frame(payload: bytes, data_type_signature: int, transfer_id: int) -> List[bytes]:
+def build_multi_frame(payload: bytes, data_type_signature: int, transfer_id: int) -> list[bytes]:
     """
     Packages a payload into a list of CAN transport frames using the multi-frame protocol.
     Includes a 16-bit CRC of the payload and signature prepended to the payload.
@@ -48,7 +47,7 @@ def build_multi_frame(payload: bytes, data_type_signature: int, transfer_id: int
     crc = compute_transfer_crc(payload, data_type_signature)
     data = struct.pack('<H', crc) + payload
     
-    frames: List[bytes] = []
+    frames: list[bytes] = []
     offset = 0
     toggle = False
     
@@ -79,7 +78,7 @@ def build_fix2_payload(
     status: int,
     mode: int = 0,
     sub_mode: int = 0,
-    covariance: Optional[List[float]] = None,
+    covariance: list[float] | None = None,
     pdop: float = 1.5
 ) -> bytes:
     """

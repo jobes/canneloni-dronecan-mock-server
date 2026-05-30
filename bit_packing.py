@@ -1,4 +1,5 @@
 import struct
+from typing import cast
 
 class BitWriter:
     """
@@ -31,13 +32,13 @@ class BitWriter:
     def write_float32(self, val: float) -> None:
         """Writes a standard IEEE 754 32-bit single-precision float."""
         packed = struct.pack('<f', float(val))
-        val_u32 = struct.unpack('<I', packed)[0]
+        val_u32 = cast(tuple[int], struct.unpack('<I', packed))[0]
         self.write_unsigned(val_u32, 32)
 
     def write_float16(self, val: float) -> None:
         """Writes an IEEE 754 16-bit half-precision float."""
         packed = struct.pack('<e', float(val))
-        val_u16 = struct.unpack('<H', packed)[0]
+        val_u16 = cast(tuple[int], struct.unpack('<H', packed))[0]
         self.write_unsigned(val_u16, 16)
 
     def get_bytes(self) -> bytes:

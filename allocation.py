@@ -1,30 +1,36 @@
 import struct
 import logging
-from typing import List, Tuple, Dict, Any
+from typing import TypedDict
 from constants import (
     DRONECAN_ALLOCATION_DTID,
     DRONECAN_ALLOCATION_SIGNATURE,
     DRONECAN_PRIORITY_DEFAULT
 )
-from can_utils import build_message_can_id
+from can_utils import ParsedNonServiceCanId, build_message_can_id
 from dronecan import build_tail_byte, build_multi_frame
 
 logger = logging.getLogger(__name__)
 
+
+class AllocationState(TypedDict):
+    uid: bytes
+    last_tid: int
+    expected_tid: int
+
 class DynamicNodeAllocator:
     def __init__(self, node_id: int) -> None:
         self.node_id: int = node_id
-        self.allocation_state: Dict[str, Any] = {'uid': b'', 'last_tid': -1, 'expected_tid': -1}
-        self.allocation_table: Dict[bytes, int] = {}
+        self.allocation_state: AllocationState = {'uid': b'', 'last_tid': -1, 'expected_tid': -1}
+        self.allocation_table: dict[bytes, int] = {}
         self.next_node_id: int = 10
         self.allocation_tid: int = 0
 
     def handle_allocation_request(
         self, 
-        parsed: Dict[str, Any], 
+        parsed: ParsedNonServiceCanId,
         frame_data: bytes, 
         uptime_sec: int
-    ) -> List[Tuple[int, bytes]]:
+    ) -> list[tuple[int, bytes]]:
         """
         Processes an incoming DroneCAN Allocation frame.
         Returns a list of CAN frames to be sent as a response, or empty list if no response needed.
@@ -65,8 +71,7 @@ class DynamicNodeAllocator:
             else:
                 # Unexpected TID, packet loss or collision occurred
                 logger.warning(
-                    f"[{uptime_sec:>6}s] DNA: Active allocation state received unexpected TID {req_tid} "
-                    f"(expected {self.allocation_state['expected_tid']}). Resetting state."
+                    f"[{uptime_sec:>6}s] DNA: Active allocation state received unexpected TID {req_tid} (expected {self.allocation_state['expected_tid']}). Resetting state."
                 )
                 self.allocation_state['uid'] = b''
                 self.allocation_state['last_tid'] = -1
@@ -88,8 +93,7 @@ class DynamicNodeAllocator:
             allocated_id = self.allocation_table[current_uid]
             first_response_byte = (allocated_id & 0x7F) << 1
             resp_payload = struct.pack('B', first_response_byte) + current_uid
-            logger.info(f"[{uptime_sec:>6}s] DNA: Allocated Node ID {allocated_id} "
-                        f"for UID {current_uid.hex()}")
+            logger.info(f"[{uptime_sec:>6}s] DNA: Allocated Node ID {allocated_id} for UID {current_uid.hex()}")
 
         resp_can_id = build_message_can_id(
             DRONECAN_PRIORITY_DEFAULT, 

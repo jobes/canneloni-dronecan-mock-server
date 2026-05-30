@@ -3,7 +3,6 @@ import logging
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +34,9 @@ class GPXSimulator:
     Loads a GPX file and simulates real-time playback by tracking
     elapsed seconds and returning the corresponding active GPX point.
     """
-    def __init__(self, gpx_path: str):
+    def __init__(self, gpx_path: str) -> None:
         self.gpx_path: str = gpx_path
-        self.points: List[GPXPoint] = []
+        self.points: list[GPXPoint] = []
         self.total_duration: float = 0.0
         self._load_gpx()
 
@@ -52,16 +51,16 @@ class GPXSimulator:
             raise e
 
         # 1. Parse all GPX trackpoints
-        raw_points: List[GPXPoint] = []
+        raw_points: list[GPXPoint] = []
         for trkpt in root.findall('.//gpx:trkpt', namespaces):
             lat = float(trkpt.attrib['lat'])
             lon = float(trkpt.attrib['lon'])
             
             ele_elem = trkpt.find('gpx:ele', namespaces)
-            ele = float(ele_elem.text) if ele_elem is not None else 0.0
+            ele = float(ele_elem.text) if ele_elem is not None and ele_elem.text is not None else 0.0
             
             time_elem = trkpt.find('gpx:time', namespaces)
-            if time_elem is not None:
+            if time_elem is not None and time_elem.text is not None:
                 # Replace 'Z' with UTC timezone offset to ensure compatibility
                 t_str = time_elem.text.replace('Z', '+00:00')
                 time_dt = datetime.fromisoformat(t_str)
@@ -113,7 +112,7 @@ class GPXSimulator:
         self.total_duration = self.points[-1].elapsed_sec
         logger.info(f"Loaded {len(self.points)} GPX points. Total track duration: {self.total_duration} seconds.")
 
-    def get_active_point(self, elapsed_sec: float) -> Optional[GPXPoint]:
+    def get_active_point(self, elapsed_sec: float) -> GPXPoint | None:
         """
         Returns the GPXPoint active at the given elapsed simulation time.
         Preserves original timestamp gaps. If elapsed_sec exceeds the track length,

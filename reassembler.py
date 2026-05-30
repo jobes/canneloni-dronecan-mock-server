@@ -1,35 +1,42 @@
 import struct
 import logging
-from typing import Dict, Optional, Tuple
+from typing import TypedDict, cast
 from crc import compute_transfer_crc
+from can_utils import ParsedCanId, ParsedNonServiceCanId, ParsedServiceCanId
 
 logger = logging.getLogger(__name__)
+
+
+class SessionState(TypedDict):
+    payload: bytearray
+    expected_toggle: bool
+    ts: float
 
 class TransferReassembler:
     """
     Reassembles single-frame and multi-frame DroneCAN (UAVCAN v0) transfers.
     Provides generic stateful reassembly and CRC verification.
     """
-    def __init__(self, signatures: Dict[Tuple[bool, int], int]) -> None:
+    def __init__(self, signatures: dict[tuple[bool, int], int]) -> None:
         """
         Args:
             signatures: A dictionary mapping (is_service, type_id) -> DSDL signature (int).
         """
-        self.signatures = signatures
+        self.signatures: dict[tuple[bool, int], int] = signatures
         # Key: (source_node_id, dest_node_id, is_service, type_id, transfer_id)
         # Value: {
         #   'payload': bytearray,
         #   'expected_toggle': bool,
         #   'ts': float
         # }
-        self.sessions: Dict[Tuple[int, int, bool, int, int], dict] = {}
+        self.sessions: dict[tuple[int, int, bool, int, int], SessionState] = {}
 
     def process_frame(
         self, 
-        parsed_id: dict, 
+        parsed_id: ParsedCanId, 
         frame_data: bytes, 
         now: float
-    ) -> Optional[bytes]:
+    ) -> bytes | None:
         """
         Processes an incoming CAN frame.
         
@@ -55,15 +62,17 @@ class TransferReassembler:
         # The actual payload content of this frame (excluding the tail byte)
         chunk = frame_data[:-1]
 
-        source_node_id = parsed_id['source_node_id']
-        is_service = parsed_id['is_service']
+        source_node_id = int(parsed_id['source_node_id'])
+        is_service = bool(parsed_id['is_service'])
         
         if is_service:
-            dest_node_id = parsed_id['dest_node_id']
-            type_id = parsed_id['service_type_id']
+            service_id = cast(ParsedServiceCanId, parsed_id)
+            dest_node_id = int(service_id['dest_node_id'])
+            type_id = int(service_id['service_type_id'])
         else:
+            message_id = cast(ParsedNonServiceCanId, parsed_id)
             dest_node_id = 0
-            type_id = parsed_id['message_type_id']
+            type_id = int(message_id['message_type_id'])
 
         # 1. Single-frame transfer (both SOT and EOT are set)
         if sot and eot:
@@ -101,10 +110,9 @@ class TransferReassembler:
         # Validate toggle sequence
         if toggle != session['expected_toggle']:
             logger.warning(
-                f"[Reassembler] Toggle bit mismatch in multi-frame transfer {session_key}. "
-                f"Got {toggle}, expected {session['expected_toggle']}. Aborting transfer."
+                f"[Reassembler] Toggle bit mismatch in multi-frame transfer {session_key}. Got {toggle}, expected {session['expected_toggle']}. Aborting transfer."
             )
-            self.sessions.pop(session_key, None)
+            _ = self.sessions.pop(session_key, None)
             return None
 
         # Append payload chunk
@@ -115,14 +123,14 @@ class TransferReassembler:
         if eot:
             # End of transfer! Complete and verify CRC.
             session_data = bytes(session['payload'])
-            self.sessions.pop(session_key, None)
+            _ = self.sessions.pop(session_key, None)
 
             if len(session_data) < 2:
                 logger.warning(f"[Reassembler] Assembled multi-frame transfer {session_key} is too short (< 2 bytes).")
                 return None
 
             # Multi-frame transfers prepend a 16-bit little-endian CRC
-            received_crc, = struct.unpack('<H', session_data[:2])
+            received_crc = cast(tuple[int], struct.unpack('<H', session_data[:2]))[0]
             actual_payload = session_data[2:]
 
             signature = self.signatures.get((is_service, type_id))
@@ -130,16 +138,14 @@ class TransferReassembler:
                 # If the signature is not registered, we cannot check the CRC,
                 # but we will log a warning and return the payload to avoid breaking custom fields.
                 logger.warning(
-                    f"[Reassembler] Multi-frame transfer for ID {type_id} has no registered DSDL signature. "
-                    f"Skipping CRC validation."
+                    f"[Reassembler] Multi-frame transfer for ID {type_id} has no registered DSDL signature. Skipping CRC validation."
                 )
                 return actual_payload
 
             expected_crc = compute_transfer_crc(actual_payload, signature)
             if received_crc != expected_crc:
                 logger.warning(
-                    f"[Reassembler] CRC mismatch in transfer {session_key}. "
-                    f"Got 0x{received_crc:04X}, expected 0x{expected_crc:04X}."
+                    f"[Reassembler] CRC mismatch in transfer {session_key}. Got 0x{received_crc:04X}, expected 0x{expected_crc:04X}."
                 )
                 return None
 
@@ -155,4 +161,4 @@ class TransferReassembler:
         ]
         for key in stale_keys:
             logger.warning(f"[Reassembler] Cleaning up stale incomplete session {key}.")
-            self.sessions.pop(key, None)
+            _ = self.sessions.pop(key, None)

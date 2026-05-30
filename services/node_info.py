@@ -1,8 +1,8 @@
 import logging
-from typing import Dict, Any, List, Tuple
+from typing import override
 from services.base import BaseServiceHandler
 from constants import DRONECAN_GETNODEINFO_DTID, DRONECAN_GETNODEINFO_SIGNATURE
-from can_utils import build_service_can_id
+from can_utils import ParsedServiceCanId, build_service_can_id
 from dronecan import build_getnodeinfo_response, build_multi_frame
 
 logger = logging.getLogger(__name__)
@@ -12,17 +12,18 @@ class GetNodeInfoHandler(BaseServiceHandler):
     Handles uavcan.protocol.GetNodeInfo service requests.
     """
     def __init__(self, node_id: int, node_name: str) -> None:
-        self.node_id = node_id
-        self.node_name = node_name
+        self.node_id: int = node_id
+        self.node_name: str = node_name
 
+    @override
     def handle_request(
         self, 
-        parsed: Dict[str, Any], 
+        parsed: ParsedServiceCanId,
         request_payload: bytes, 
         req_tid: int, 
         req_prio: int, 
         uptime_sec: int
-    ) -> List[Tuple[int, bytes]]:
+    ) -> list[tuple[int, bytes]]:
         requester = parsed['source_node_id']
         logger.info(f"[{uptime_sec:>6}s] RX GetNodeInfo from node {requester} (tid={req_tid})")
 
@@ -35,8 +36,7 @@ class GetNodeInfoHandler(BaseServiceHandler):
             resp_payload, DRONECAN_GETNODEINFO_SIGNATURE, req_tid
         )
 
-        logger.info(f"[{uptime_sec:>6}s] TX GetNodeInfo → node {requester} "
-                    f"({len(can_frames)} frames, \"{self.node_name}\")")
+        logger.info(f"[{uptime_sec:>6}s] TX GetNodeInfo → node {requester} ({len(can_frames)} frames, \"{self.node_name}\")")
 
         return [(resp_can_id, fd) for fd in can_frames]
 

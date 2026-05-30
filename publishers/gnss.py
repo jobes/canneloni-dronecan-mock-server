@@ -1,10 +1,10 @@
 import logging
-from typing import List, Tuple
-from publishers.base import BasePublisher
+from typing import override
+from publishers.base import BasePublisher, ClockProtocol
 from constants import DRONECAN_GNSS_FIX2_DTID, DRONECAN_GNSS_FIX2_SIGNATURE
 from can_utils import build_message_can_id
 from dronecan import build_fix2_payload, build_multi_frame
-from gpx_sim import GPXSimulator
+from gpx_sim import GPXPoint, GPXSimulator
 
 logger = logging.getLogger(__name__)
 
@@ -12,20 +12,21 @@ class GNSSPublisher(BasePublisher):
     """
     Broadcasts simulated GNSS Fix2 updates driven sequentially by a GPX flight track.
     """
-    def __init__(self, node_id: int, gpx_path: str, clock, priority: int = 4) -> None:
-        self.node_id = node_id
-        self.priority = priority
-        self.clock = clock
-        self.gpx_sim = GPXSimulator(gpx_path)
-        self.can_id = build_message_can_id(self.priority, DRONECAN_GNSS_FIX2_DTID, self.node_id)
-        self.tid = 0
-        self.sim_start_time = 0.0
-        self.next_point_idx = 0
-        self.last_send = 0.0
+    def __init__(self, node_id: int, gpx_path: str, clock: ClockProtocol, priority: int = 4) -> None:
+        self.node_id: int = node_id
+        self.priority: int = priority
+        self.clock: ClockProtocol = clock
+        self.gpx_sim: GPXSimulator = GPXSimulator(gpx_path)
+        self.can_id: int = build_message_can_id(self.priority, DRONECAN_GNSS_FIX2_DTID, self.node_id)
+        self.tid: int = 0
+        self.sim_start_time: float = 0.0
+        self.next_point_idx: int = 0
+        self.last_send: float = 0.0
 
     def get_uptime_sec(self) -> int:
         return self.clock.get_uptime_sec()
 
+    @override
     def get_timeout(self, now: float) -> float:
         if self.next_point_idx == 0:
             return 0.0
@@ -35,9 +36,10 @@ class GNSSPublisher(BasePublisher):
             return max(0.0, pt.elapsed_sec - elapsed)
         return float('inf')
 
-    def process(self, now: float) -> List[Tuple[int, bytes]]:
+    @override
+    def process(self, now: float) -> list[tuple[int, bytes]]:
         send_gps = False
-        active_pt = None
+        active_pt: GPXPoint | None = None
 
         if self.next_point_idx == 0:
             # First point of simulation triggers immediately
@@ -80,9 +82,11 @@ class GNSSPublisher(BasePublisher):
 
             can_frames = build_multi_frame(payload, DRONECAN_GNSS_FIX2_SIGNATURE, self.tid)
             
-            logger.debug(f"[{uptime_sec:>6}s] TX GNSS Fix2   tid={self.tid:>2} "
-                         f"| Lat={active_pt.lat:.7f} Lon={active_pt.lon:.7f} Alt={active_pt.ele:.1f}m "
-                         f"Speed={active_pt.speed:.1f}m/s Hdg={active_pt.bearing:.1f}°")
+            logger.debug(
+                f"[{uptime_sec:>6}s] TX GNSS Fix2   tid={self.tid:>2} | "
+                + f"Lat={active_pt.lat:.7f} Lon={active_pt.lon:.7f} Alt={active_pt.ele:.1f}m "
+                + f"Speed={active_pt.speed:.1f}m/s Hdg={active_pt.bearing:.1f}°"
+            )
 
             self.tid = (self.tid + 1) & 0x1F
             self.last_send = now

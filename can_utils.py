@@ -1,9 +1,46 @@
 from constants import CAN_EFF_FLAG, CAN_EFF_MASK
+from typing import Literal, TypedDict
 
-def build_message_can_id(priority, msg_type_id, src_node_id):
+
+class ParsedServiceCanId(TypedDict):
+    is_service: Literal[True]
+    priority: int
+    service_type_id: int
+    request_not_response: bool
+    dest_node_id: int
+    source_node_id: int
+
+
+class ParsedAnonymousMessageCanId(TypedDict):
+    is_service: Literal[False]
+    priority: int
+    message_type_id: int
+    source_node_id: Literal[0]
+    discriminator: int
+
+
+class ParsedMessageCanId(TypedDict):
+    is_service: Literal[False]
+    priority: int
+    message_type_id: int
+    source_node_id: int
+
+
+ParsedCanId = ParsedServiceCanId | ParsedAnonymousMessageCanId | ParsedMessageCanId
+ParsedNonServiceCanId = ParsedAnonymousMessageCanId | ParsedMessageCanId
+
+
+def build_message_can_id(priority: int, msg_type_id: int, src_node_id: int) -> int:
     return CAN_EFF_FLAG | ((priority & 0x1F) << 24) | ((msg_type_id & 0xFFFF) << 8) | (src_node_id & 0x7F)
 
-def build_service_can_id(priority, svc_type_id, is_request, dst_node_id, src_node_id):
+
+def build_service_can_id(
+    priority: int,
+    svc_type_id: int,
+    is_request: bool,
+    dst_node_id: int,
+    src_node_id: int,
+) -> int:
     return (CAN_EFF_FLAG |
             ((priority & 0x1F) << 24) |
             ((svc_type_id & 0xFF) << 16) |
@@ -12,7 +49,8 @@ def build_service_can_id(priority, svc_type_id, is_request, dst_node_id, src_nod
             (1 << 7) |
             (src_node_id & 0x7F))
 
-def parse_can_id(can_id):
+
+def parse_can_id(can_id: int) -> ParsedCanId:
     raw = can_id & CAN_EFF_MASK
     is_service = bool(raw & (1 << 7))
     source_node_id = raw & 0x7F
