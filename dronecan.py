@@ -144,3 +144,62 @@ def build_fix2_payload(
     bw.write_float16(pdop)
 
     return bw.get_bytes()
+
+
+def build_ice_reciprocating_status_payload(
+    state: int,
+    flags: int,
+    engine_load_percent: int,
+    engine_speed_rpm: int,
+    spark_dwell_time_ms: float,
+    atmospheric_pressure_kpa: float,
+    intake_manifold_pressure_kpa: float,
+    intake_manifold_temperature: float,
+    coolant_temperature: float,
+    oil_pressure: float,
+    oil_temperature: float,
+    fuel_pressure: float,
+    fuel_consumption_rate_cm3pm: float,
+    estimated_consumed_fuel_volume_cm3: float,
+    throttle_position_percent: int,
+    ecu_index: int,
+    spark_plug_usage: int,
+    cylinder_status: list[dict[str, float]] | None = None,
+) -> bytes:
+    """
+    Serializes a uavcan.equipment.ice.reciprocating.Status DroneCAN message payload.
+    """
+    bw = BitWriter()
+
+    bw.write_unsigned(state, 2)
+    bw.write_unsigned(flags, 30)
+    bw.write_unsigned(0, 16)
+    bw.write_unsigned(engine_load_percent, 7)
+    bw.write_unsigned(engine_speed_rpm, 17)
+    bw.write_float16(spark_dwell_time_ms)
+    bw.write_float16(atmospheric_pressure_kpa)
+    bw.write_float16(intake_manifold_pressure_kpa)
+    bw.write_float16(intake_manifold_temperature)
+    bw.write_float16(coolant_temperature)
+    bw.write_float16(oil_pressure)
+    bw.write_float16(oil_temperature)
+    bw.write_float16(fuel_pressure)
+    bw.write_float32(fuel_consumption_rate_cm3pm)
+    bw.write_float32(estimated_consumed_fuel_volume_cm3)
+    bw.write_unsigned(throttle_position_percent, 7)
+    bw.write_unsigned(ecu_index, 6)
+    bw.write_unsigned(spark_plug_usage, 3)
+
+    cylinders = cylinder_status or []
+    if len(cylinders) > 16:
+        raise ValueError("cylinder_status can contain at most 16 elements")
+    # cylinder_status is the tail array field in this message, so TAO applies:
+    # no explicit array length is serialized for the final field.
+    for cylinder in cylinders:
+        bw.write_float16(float(cylinder.get('ignition_timing_deg', float('nan'))))
+        bw.write_float16(float(cylinder.get('injection_time_ms', float('nan'))))
+        bw.write_float16(float(cylinder.get('cylinder_head_temperature', float('nan'))))
+        bw.write_float16(float(cylinder.get('exhaust_gas_temperature', float('nan'))))
+        bw.write_float16(float(cylinder.get('lambda_coefficient', float('nan'))))
+
+    return bw.get_bytes()

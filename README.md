@@ -11,6 +11,7 @@ This simulator is designed for developers of avionics, autopilots, and control s
 - **🔄 Bidirectional Communication:** Handles receiving and sending CAN frames encapsulated in Cannelloni UDP packets.
 - **💓 DroneCAN Heartbeat:** Periodically broadcasts `uavcan.protocol.NodeStatus` messages with node status (Node Health, Mode, Uptime).
 - **🛰️ GPX Flight Simulation (Fix2):** Loads a real flight path from a GPX file (`assets/flight.gpx`) and broadcasts complex `uavcan.equipment.gnss.Fix2` messages in real time (coordinates, altitude, 3D velocity, satellites, etc.).
+- **⛽ ICE Reciprocating Status:** Broadcasts `uavcan.equipment.ice.reciprocating.Status` with configurable min/max ranges in `config.yaml`.
 - **🧬 Dynamic Node Allocation (DNA):** Supports the standard protocol for automatic Node ID assignment (`uavcan.protocol.dynamic_node_id.Allocation`).
 - **ℹ️ Node Information:** Responds to `uavcan.protocol.GetNodeInfo` service requests and constructs valid multi-frame responses with node metadata.
 - **🛡️ Socket-Free Python implementation:** The Python script communicates strictly via a UDP network socket, meaning it requires no native SocketCAN C-libraries or complex Python wrapper setups to run.
@@ -69,7 +70,8 @@ Start the `cannelloni` daemon to bridge `vcan0` with UDP ports.
 ```bash
 cannelloni -I vcan0 -R 127.0.0.1 -r 20001 -l 20000
 ```
-*Tip: Keep this command running in a separate terminal window or run it in the background.*
+
+_Tip: Keep this command running in a separate terminal window or run it in the background._
 
 ### 3. Run the DroneCAN Mock Server
 
@@ -95,9 +97,54 @@ priority: 4                     # Message priority (0-7, where 0 is highest)
 heartbeat_interval: 1.0         # Heartbeat broadcast interval in seconds
 gpx: "assets/flight.gpx"        # Path to the GPX flight track file for the GPS simulator
 local_port: 20001               # Local UDP port for Cannelloni communication
+
+ice_reciprocating:
+   interval: 1.0
+   engine_load_percent:
+      min: 10
+      max: 75
+   engine_speed_rpm:
+      min: 700
+      max: 2400
+   throttle_position_percent:
+      min: 8
+      max: 70
+   cylinder_status:
+      - ignition_timing_deg:
+            min: 6.0
+            max: 20.0
+         injection_time_ms:
+            min: 1.5
+            max: 6.0
+         cylinder_head_temperature:
+            min: 340.0
+            max: 410.0
+         exhaust_gas_temperature:
+            min: 700.0
+            max: 980.0
+         lambda_coefficient:
+            min: 0.85
+            max: 1.10
+      - ignition_timing_deg:
+            min: 6.0
+            max: 20.0
+         injection_time_ms:
+            min: 1.5
+            max: 6.0
+         cylinder_head_temperature:
+            min: 340.0
+            max: 410.0
+         exhaust_gas_temperature:
+            min: 700.0
+            max: 980.0
+         lambda_coefficient:
+            min: 0.85
+            max: 1.10
+   # Extend this section with any other fields you want to randomize.
 ```
 
 To run with a custom configuration file:
+
 ```bash
 python3 main.py --config path/to/my_config.yaml
 ```

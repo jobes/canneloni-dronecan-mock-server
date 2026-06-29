@@ -5,6 +5,7 @@ Cannelloni CAN Mock Server - DroneCAN Node Simulator
 Simulates a DroneCAN (UAVCAN v0) node that:
   - Broadcasts uavcan.protocol.NodeStatus heartbeat every 1 second
   - Responds to uavcan.protocol.GetNodeInfo service requests with node name
+    - Broadcasts uavcan.equipment.ice.reciprocating.Status with config-driven ranges
   - Implements Dynamic Node Allocation (DNA)
 
 Bidirectional cannelloni setup:
@@ -35,8 +36,8 @@ logger = logging.getLogger(__name__)
 
 CanFrame = tuple[int, bytes]
 RemoteAddr = tuple[str, int]
-ConfigValue = int | float | str
-Config = dict[str, ConfigValue]
+ConfigValue = int | float | str | dict[str, object]
+Config = dict[str, object]
 
 
 class AsyncZeroconfProtocol(Protocol):
@@ -53,7 +54,43 @@ DEFAULT_CONFIG: Config = {
     'node_name': DRONECAN_NODE_NAME,
     'priority': DRONECAN_PRIORITY_DEFAULT,
     'heartbeat_interval': 1.0,
-    'gpx': 'assets/flight.gpx'
+    'gpx': 'assets/flight.gpx',
+    'ice_reciprocating': {
+        'interval': 1.0,
+        'state': {'min': 0, 'max': 2},
+        'flags': {'min': 0, 'max': 0},
+        'engine_load_percent': {'min': 10, 'max': 75},
+        'engine_speed_rpm': {'min': 700, 'max': 2400},
+        'spark_dwell_time_ms': {'min': 1.5, 'max': 4.5},
+        'atmospheric_pressure_kpa': {'min': 98.0, 'max': 102.5},
+        'intake_manifold_pressure_kpa': {'min': 25.0, 'max': 90.0},
+        'intake_manifold_temperature': {'min': 300.0, 'max': 390.0},
+        'coolant_temperature': {'min': 320.0, 'max': 410.0},
+        'oil_pressure': {'min': 180.0, 'max': 450.0},
+        'oil_temperature': {'min': 320.0, 'max': 410.0},
+        'fuel_pressure': {'min': 180.0, 'max': 420.0},
+        'fuel_consumption_rate_cm3pm': {'min': 0.0, 'max': 220.0},
+        'estimated_consumed_fuel_volume_cm3': {'min': 0.0, 'max': 5000.0},
+        'throttle_position_percent': {'min': 8, 'max': 70},
+        'ecu_index': {'min': 0, 'max': 0},
+        'spark_plug_usage': {'min': 0, 'max': 3},
+        'cylinder_status': [
+            {
+                'ignition_timing_deg': {'min': 6.0, 'max': 20.0},
+                'injection_time_ms': {'min': 1.5, 'max': 6.0},
+                'cylinder_head_temperature': {'min': 340.0, 'max': 410.0},
+                'exhaust_gas_temperature': {'min': 700.0, 'max': 980.0},
+                'lambda_coefficient': {'min': 0.85, 'max': 1.10},
+            },
+            {
+                'ignition_timing_deg': {'min': 6.0, 'max': 20.0},
+                'injection_time_ms': {'min': 1.5, 'max': 6.0},
+                'cylinder_head_temperature': {'min': 340.0, 'max': 410.0},
+                'exhaust_gas_temperature': {'min': 700.0, 'max': 980.0},
+                'lambda_coefficient': {'min': 0.85, 'max': 1.10},
+            },
+        ],
+    },
 }
 
 def get_local_ip() -> str:
@@ -67,6 +104,33 @@ def get_local_ip() -> str:
     finally:
         s.close()
     return ip
+
+
+def _clone_config_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _clone_config_value(val) for key, val in value.items()}
+    return value
+
+
+def _merge_config_value(default_value: object, loaded_value: object) -> object:
+    if isinstance(default_value, Mapping) and isinstance(loaded_value, Mapping):
+        merged = {str(key): _clone_config_value(val) for key, val in default_value.items()}
+        for key, val in loaded_value.items():
+            norm_key = str(key).replace('-', '_')
+            if norm_key in merged:
+                merged[norm_key] = _merge_config_value(merged[norm_key], val)
+            else:
+                merged[norm_key] = _clone_config_value(val)
+        return merged
+    if isinstance(default_value, bool):
+        return bool(loaded_value)
+    if isinstance(default_value, int) and not isinstance(default_value, bool):
+        return int(loaded_value)
+    if isinstance(default_value, float):
+        return float(loaded_value)
+    if isinstance(default_value, str):
+        return str(loaded_value)
+    return _clone_config_value(loaded_value)
 
 
 class CannelloniProtocol(asyncio.DatagramProtocol):
@@ -134,6 +198,7 @@ async def run_server(config: Config) -> None:
         int(config['priority']),
         float(config['heartbeat_interval']),
         str(config['gpx']),
+        cast(Mapping[str, object], config.get('ice_reciprocating', {})),
         clock
     )
     
@@ -160,7 +225,7 @@ async def run_server(config: Config) -> None:
     logger.info(f"║  Node Name:    {config['node_name']:<40}║")
     logger.info(f"║  CAN ID:       0x{node.heartbeat_can_id:08X}{' ' * 30}║")
     logger.info("╠══════════════════════════════════════════════════════════╣")
-    logger.info("║  Heartbeat + GetNodeInfo + DNA  (Waiting for client...) ║")
+    logger.info("║  Heartbeat + GetNodeInfo + ICE + DNA (Waiting for client...) ║")
     logger.info("╚══════════════════════════════════════════════════════════╝")
 
     loop = asyncio.get_running_loop()
@@ -243,23 +308,9 @@ def main() -> None:
                 for key, val in loaded_map.items():
                     norm_key = key.replace('-', '_')
                     if norm_key in config:
-                        default_val = config[norm_key]
-                        if isinstance(default_val, bool):
-                            config[norm_key] = bool(val)
-                        elif isinstance(default_val, int):
-                            if isinstance(val, (int, float, str, bool)):
-                                config[norm_key] = int(val)
-                            else:
-                                config[norm_key] = default_val
-                        elif isinstance(default_val, float):
-                            if isinstance(val, (int, float, str, bool)):
-                                config[norm_key] = float(val)
-                            else:
-                                config[norm_key] = default_val
-                        else:
-                            config[norm_key] = str(val)
+                        config[norm_key] = _merge_config_value(config[norm_key], val)
                     else:
-                        config[norm_key] = str(val)
+                        config[norm_key] = _clone_config_value(val)
         logger.info(f"Loaded configuration from {config_path}")
     except FileNotFoundError:
         if config_path != 'config.yaml':
