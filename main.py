@@ -91,6 +91,14 @@ DEFAULT_CONFIG: Config = {
             },
         ],
     },
+    'ice_fuel_tank': {
+        'interval': 1.0,
+        'available_fuel_volume_percent': {'min': 35, 'max': 95},
+        'available_fuel_volume_cm3': {'min': 1000.0, 'max': 10000.0},
+        'fuel_consumption_rate_cm3pm': {'min': 0.0, 'max': 220.0},
+        'fuel_temperature': {'min': 278.0, 'max': 325.0},
+        'fuel_tank_id': {'min': 0, 'max': 0},
+    },
 }
 
 def get_local_ip() -> str:
@@ -199,6 +207,7 @@ async def run_server(config: Config) -> None:
         float(config['heartbeat_interval']),
         str(config['gpx']),
         cast(Mapping[str, object], config.get('ice_reciprocating', {})),
+        cast(Mapping[str, object], config.get('ice_fuel_tank', {})),
         clock
     )
     

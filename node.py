@@ -8,6 +8,8 @@ from constants import (
     DRONECAN_GETNODEINFO_SIGNATURE,
     DRONECAN_ICE_RECIPROCATING_STATUS_DTID,
     DRONECAN_ICE_RECIPROCATING_STATUS_SIGNATURE,
+    DRONECAN_ICE_FUEL_TANK_STATUS_DTID,
+    DRONECAN_ICE_FUEL_TANK_STATUS_SIGNATURE,
 )
 from can_utils import ParsedNonServiceCanId, ParsedServiceCanId, build_message_can_id, parse_can_id
 from allocation import DynamicNodeAllocator
@@ -16,6 +18,7 @@ from publishers.base import BasePublisher, ClockProtocol
 from publishers.heartbeat import HeartbeatPublisher
 from publishers.gnss import GNSSPublisher
 from publishers.ice import IceReciprocatingPublisher
+from publishers.fuel_tank import IceFuelTankPublisher
 from services.base import BaseServiceHandler
 from services.node_info import GetNodeInfoHandler
 
@@ -25,7 +28,7 @@ class DroneCANMockNode:
     Simulates a high-fidelity DroneCAN (UAVCAN v0) node.
     Features are componentized into Publishers and Service Handlers for easy extensibility.
     """
-    def __init__(self, node_id: int, node_name: str, priority: int, heartbeat_interval: float, gpx_path: str, ice_config: dict[str, object], clock: ClockProtocol) -> None:
+    def __init__(self, node_id: int, node_name: str, priority: int, heartbeat_interval: float, gpx_path: str, ice_config: dict[str, object], fuel_tank_config: dict[str, object], clock: ClockProtocol) -> None:
         self.node_id: int = node_id
         self.node_name: str = node_name
         self.priority: int = priority
@@ -44,6 +47,7 @@ class DroneCANMockNode:
             HeartbeatPublisher(node_id=self.node_id, clock=self.clock, interval=self.heartbeat_interval, priority=self.priority),
             GNSSPublisher(node_id=self.node_id, gpx_path=gpx_path, clock=self.clock, priority=self.priority),
             IceReciprocatingPublisher(node_id=self.node_id, clock=self.clock, priority=self.priority, config=ice_config),
+            IceFuelTankPublisher(node_id=self.node_id, clock=self.clock, priority=self.priority, config=fuel_tank_config),
         ]
 
         # Register Service Handlers by Service Type ID
@@ -55,6 +59,7 @@ class DroneCANMockNode:
         signatures = {
             (True, DRONECAN_GETNODEINFO_DTID): DRONECAN_GETNODEINFO_SIGNATURE,
             (False, DRONECAN_ICE_RECIPROCATING_STATUS_DTID): DRONECAN_ICE_RECIPROCATING_STATUS_SIGNATURE,
+            (False, DRONECAN_ICE_FUEL_TANK_STATUS_DTID): DRONECAN_ICE_FUEL_TANK_STATUS_SIGNATURE,
         }
         self.reassembler: TransferReassembler = TransferReassembler(signatures)
 

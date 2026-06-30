@@ -203,3 +203,25 @@ def build_ice_reciprocating_status_payload(
         bw.write_float16(float(cylinder.get('lambda_coefficient', float('nan'))))
 
     return bw.get_bytes()
+
+
+def build_ice_fuel_tank_status_payload(
+    available_fuel_volume_percent: int,
+    available_fuel_volume_cm3: float,
+    fuel_consumption_rate_cm3pm: float,
+    fuel_temperature: float,
+    fuel_tank_id: int,
+) -> bytes:
+    """
+    Serializes a uavcan.equipment.ice.FuelTankStatus DroneCAN message payload.
+    """
+    bw = BitWriter()
+
+    bw.write_unsigned(0, 9)
+    bw.write_unsigned(available_fuel_volume_percent, 7)
+    bw.write_float32(available_fuel_volume_cm3)
+    bw.write_float32(fuel_consumption_rate_cm3pm)
+    bw.write_float16(fuel_temperature)
+    bw.write_unsigned(fuel_tank_id, 8)
+
+    return bw.get_bytes()
