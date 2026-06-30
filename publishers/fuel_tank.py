@@ -70,8 +70,21 @@ class IceFuelTankPublisher(BasePublisher):
 
         uptime_sec = self.get_uptime_sec()
 
-        available_percent = self._sample_int('available_fuel_volume_percent', 0, 100)
         available_cm3 = self._sample_float('available_fuel_volume_cm3', 0.0, 0.0)
+
+        available_cm3_config = self.config.get('available_fuel_volume_cm3')
+        if isinstance(available_cm3_config, Mapping):
+            max_volume = float(cast(float | int | str, available_cm3_config.get('max', 0.0)))
+        elif available_cm3_config is not None:
+            max_volume = float(cast(float | int | str, available_cm3_config))
+        else:
+            max_volume = 0.0
+
+        if max_volume > 0.0:
+            available_percent = max(0, min(100, int(round((available_cm3 / max_volume) * 100.0))))
+        else:
+            available_percent = 0
+
         consumption_cm3pm = self._sample_float('fuel_consumption_rate_cm3pm', 0.0, 0.0)
         fuel_temperature = self._sample_float('fuel_temperature', float('nan'), float('nan'))
         fuel_tank_id = self._sample_int('fuel_tank_id', 0, 255)

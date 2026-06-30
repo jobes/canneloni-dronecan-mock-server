@@ -72,7 +72,6 @@ DEFAULT_CONFIG: ServerConfig = {
     },
     'ice_fuel_tank': {
         'interval': 1.0,
-        'available_fuel_volume_percent': {'min': 35, 'max': 95},
         'available_fuel_volume_cm3': {'min': 1000.0, 'max': 10000.0},
         'fuel_consumption_rate_cm3pm': {'min': 0.0, 'max': 220.0},
         'fuel_temperature': {'min': 278.0, 'max': 325.0},

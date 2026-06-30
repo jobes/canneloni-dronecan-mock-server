@@ -129,6 +129,29 @@ class PublisherContractTests(unittest.TestCase):
         _, frame2 = second[0]
         self.assertEqual(_tail_tid(frame2), 1)
 
+    def test_fuel_tank_publisher_percentage_calculation(self) -> None:
+        from unittest.mock import patch
+        clock = FakeClock()
+        config = {
+            "interval": 1.0,
+            "available_fuel_volume_cm3": {
+                "min": 10000.0,
+                "max": 40000.0,
+            }
+        }
+        publisher = IceFuelTankPublisher(node_id=2, clock=clock, priority=4, config=config)
+
+        clock.advance(1.0)
+        with patch("publishers.fuel_tank.build_ice_fuel_tank_status_payload") as mock_build:
+            publisher.process(clock.now())
+            mock_build.assert_called_once()
+            kwargs = mock_build.call_args.kwargs
+            available_percent = kwargs.get("available_fuel_volume_percent")
+            available_cm3 = kwargs.get("available_fuel_volume_cm3")
+            
+            expected_percent = max(0, min(100, int(round((available_cm3 / 40000.0) * 100.0))))
+            self.assertEqual(available_percent, expected_percent)
+
 
 if __name__ == "__main__":
     unittest.main()
