@@ -28,7 +28,18 @@ class DroneCANMockNode:
     Simulates a high-fidelity DroneCAN (UAVCAN v0) node.
     Features are componentized into Publishers and Service Handlers for easy extensibility.
     """
-    def __init__(self, node_id: int, node_name: str, priority: int, heartbeat_interval: float, gpx_path: str, ice_config: dict[str, object], fuel_tank_config: dict[str, object], clock: ClockProtocol) -> None:
+    def __init__(
+        self,
+        node_id: int,
+        node_name: str,
+        priority: int,
+        heartbeat_interval: float,
+        gpx_path: str,
+        ice_config: dict[str, object],
+        fuel_tank_config: dict[str, object],
+        clock: ClockProtocol,
+        reassembler_session_timeout: float = 2.0,
+    ) -> None:
         self.node_id: int = node_id
         self.node_name: str = node_name
         self.priority: int = priority
@@ -61,7 +72,10 @@ class DroneCANMockNode:
             (False, DRONECAN_ICE_RECIPROCATING_STATUS_DTID): DRONECAN_ICE_RECIPROCATING_STATUS_SIGNATURE,
             (False, DRONECAN_ICE_FUEL_TANK_STATUS_DTID): DRONECAN_ICE_FUEL_TANK_STATUS_SIGNATURE,
         }
-        self.reassembler: TransferReassembler = TransferReassembler(signatures)
+        self.reassembler: TransferReassembler = TransferReassembler(
+            signatures,
+            session_timeout=reassembler_session_timeout,
+        )
 
     def get_uptime_sec(self) -> int:
         """Returns the node simulation uptime in seconds."""
@@ -75,7 +89,10 @@ class DroneCANMockNode:
         now = self.clock.now()
         frames: list[tuple[int, bytes]] = []
         for pub in self.publishers:
-            frames.extend(pub.process(now))
+            try:
+                frames.extend(pub.process(now))
+            except Exception:
+                logger.exception("Publisher %s failed during processing", pub.__class__.__name__)
         return frames
 
     def get_timeout(self) -> float:
@@ -106,19 +123,31 @@ class DroneCANMockNode:
 
             # Reassemble incoming service request
             now = self.clock.now()
-            assembled_payload = self.reassembler.process_frame(service_parsed, frame_data, now)
+            try:
+                assembled_payload = self.reassembler.process_frame(service_parsed, frame_data, now)
+            except Exception:
+                logger.exception("Failed to reassemble incoming service transfer for service ID %s", svc_id)
+                return []
             if assembled_payload is None:
                 # Part of multi-frame transfer or invalid frame
                 return []
 
             handler = self.service_handlers.get(svc_id)
             if handler:
-                response_frames = handler.handle_request(service_parsed, assembled_payload, req_tid, req_prio, uptime_sec)
+                try:
+                    response_frames = handler.handle_request(service_parsed, assembled_payload, req_tid, req_prio, uptime_sec)
+                except Exception:
+                    logger.exception("Service handler for service ID %s failed", svc_id)
+                    return []
             else:
                 logger.info(f"[{uptime_sec:>6}s] RX service {svc_id} from node {requester}")
         else:
             msg_parsed = cast(ParsedNonServiceCanId, parsed)
-            alloc_resp = self.allocator.handle_allocation_request(msg_parsed, frame_data, uptime_sec)
+            try:
+                alloc_resp = self.allocator.handle_allocation_request(msg_parsed, frame_data, uptime_sec)
+            except Exception:
+                logger.exception("DNA allocator failed while processing message")
+                return []
             if alloc_resp:
                 response_frames.extend(alloc_resp)
                 logger.info(f"[{uptime_sec:>6}s] TX DNA Response → {len(alloc_resp)} frames")

@@ -50,6 +50,8 @@ class AsyncZeroconfProtocol(Protocol):
 # Default configuration values (without host and remote_port, as they are dynamically learned)
 DEFAULT_CONFIG: Config = {
     'local_port': 20001,
+    'peer_timeout': 10.0,
+    'reassembler_session_timeout': 2.0,
     'node_id': DRONECAN_NODE_ID,
     'node_name': DRONECAN_NODE_NAME,
     'priority': DRONECAN_PRIORITY_DEFAULT,
@@ -142,11 +144,12 @@ def _merge_config_value(default_value: object, loaded_value: object) -> object:
 
 
 class CannelloniProtocol(asyncio.DatagramProtocol):
-    def __init__(self, node: DroneCANMockNode) -> None:
+    def __init__(self, node: DroneCANMockNode, peer_timeout: float = 10.0) -> None:
         self.node: DroneCANMockNode = node
         self.transport: asyncio.DatagramTransport | None = None
         self.seq_no: int = 0
-        self.active_remote: RemoteAddr | None = None
+        self.peer_timeout: float = max(0.5, float(peer_timeout))
+        self.active_remotes: dict[RemoteAddr, float] = {}
 
     @override
     def connection_made(self, transport: asyncio.DatagramTransport) -> None:
@@ -154,14 +157,24 @@ class CannelloniProtocol(asyncio.DatagramProtocol):
 
     @override
     def datagram_received(self, data: bytes, addr: RemoteAddr) -> None:
-        # Dynamically discover/update the remote client address
-        if self.active_remote != addr:
+        now = asyncio.get_running_loop().time()
+        if addr not in self.active_remotes:
             logger.info(f"[System] Remote client connected: {addr[0]}:{addr[1]}. Starting periodic broadcasts.")
-            self.active_remote = addr
+        self.active_remotes[addr] = now
 
         resp_frames: list[CanFrame] = []
-        for can_id, frame_data in parse_cannelloni_packet(data):
-            resp = self.node.handle_frame(can_id, frame_data)
+        try:
+            parsed_frames = parse_cannelloni_packet(data)
+        except Exception:
+            logger.exception("Failed to parse incoming cannelloni packet from %s:%s", addr[0], addr[1])
+            return
+
+        for can_id, frame_data in parsed_frames:
+            try:
+                resp = self.node.handle_frame(can_id, frame_data)
+            except Exception:
+                logger.exception("Node frame handler failed for CAN ID 0x%08X", can_id)
+                continue
             if resp:
                 resp_frames.extend(resp)
         
@@ -175,21 +188,35 @@ class CannelloniProtocol(asyncio.DatagramProtocol):
     def send_packet(self, frames: list[CanFrame], addr: RemoteAddr) -> None:
         if not self.transport or not frames:
             return
-        pkt = build_cannelloni_packet(self.seq_no, frames)
+        try:
+            pkt = build_cannelloni_packet(self.seq_no, frames)
+        except Exception:
+            logger.exception("Failed to build cannelloni packet")
+            return
         self.transport.sendto(pkt, addr)
         self.seq_no = (self.seq_no + 1) & 0xFF
+
+    def get_active_remotes(self, now: float) -> list[RemoteAddr]:
+        stale = [addr for addr, ts in self.active_remotes.items() if now - ts > self.peer_timeout]
+        for addr in stale:
+            logger.info("[System] Remote client expired: %s:%s", addr[0], addr[1])
+            _ = self.active_remotes.pop(addr, None)
+        return list(self.active_remotes.keys())
 
 
 async def publisher_task(node: DroneCANMockNode, protocol: CannelloniProtocol) -> None:
     try:
         while True:
-            if protocol.active_remote is None:
+            now = asyncio.get_running_loop().time()
+            remotes = protocol.get_active_remotes(now)
+            if not remotes:
                 await asyncio.sleep(0.1)
                 continue
                 
             pub_frames = node.process_publishers()
             if pub_frames:
-                protocol.send_packet(pub_frames, protocol.active_remote)
+                for remote in remotes:
+                    protocol.send_packet(pub_frames, remote)
             
             timeout = node.get_timeout()
             await asyncio.sleep(timeout)
@@ -208,7 +235,8 @@ async def run_server(config: Config) -> None:
         str(config['gpx']),
         cast(Mapping[str, object], config.get('ice_reciprocating', {})),
         cast(Mapping[str, object], config.get('ice_fuel_tank', {})),
-        clock
+        clock,
+        float(config.get('reassembler_session_timeout', 2.0)),
     )
     
     local_ip = get_local_ip()
@@ -246,7 +274,7 @@ async def run_server(config: Config) -> None:
     sock.setblocking(False)
 
     transport, protocol = await loop.create_datagram_endpoint(
-        lambda: CannelloniProtocol(node),
+        lambda: CannelloniProtocol(node, float(config.get('peer_timeout', 10.0))),
         sock=sock
     )
     

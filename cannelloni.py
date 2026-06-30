@@ -5,7 +5,9 @@ from constants import CANNELLONI_VERSION, CANNELLONI_OP_DATA, CANNELLONI_HEADER_
 
 def build_cannelloni_packet(seq_no: int, frames_list: list[tuple[int, bytes]]) -> bytes:
     """frames_list: list of (can_id, data) tuples"""
-    header = struct.pack('!BBBh', CANNELLONI_VERSION, CANNELLONI_OP_DATA,
+    if len(frames_list) > 0xFFFF:
+        raise ValueError('Cannelloni packet supports at most 65535 frames')
+    header = struct.pack('!BBBH', CANNELLONI_VERSION, CANNELLONI_OP_DATA,
                          seq_no & 0xFF, len(frames_list))
     body = b''
     for can_id, data in frames_list:
@@ -18,7 +20,7 @@ def parse_cannelloni_packet(packet: bytes) -> list[tuple[int, bytes]]:
         return []
     version_raw, op_code_raw, reserved_raw, count_raw = cast(
         tuple[int, int, int, int],
-        struct.unpack('!BBBh', packet[:5]),
+        struct.unpack('!BBBH', packet[:5]),
     )
     version = int(version_raw)
     op_code = int(op_code_raw)

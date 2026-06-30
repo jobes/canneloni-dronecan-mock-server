@@ -6,6 +6,8 @@ priority: 4
 heartbeat_interval: 1.0
 gpx: "assets/flight.gpx"
 local_port: 20001
+peer_timeout: 10.0
+reassembler_session_timeout: 2.0
 ice_reciprocating:
   interval: 1.0
   state:

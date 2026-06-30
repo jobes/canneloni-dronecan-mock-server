@@ -17,12 +17,13 @@ class TransferReassembler:
     Reassembles single-frame and multi-frame DroneCAN (UAVCAN v0) transfers.
     Provides generic stateful reassembly and CRC verification.
     """
-    def __init__(self, signatures: dict[tuple[bool, int], int]) -> None:
+    def __init__(self, signatures: dict[tuple[bool, int], int], session_timeout: float = 2.0) -> None:
         """
         Args:
             signatures: A dictionary mapping (is_service, type_id) -> DSDL signature (int).
         """
         self.signatures: dict[tuple[bool, int], int] = signatures
+        self.session_timeout: float = max(0.05, float(session_timeout))
         # Key: (source_node_id, dest_node_id, is_service, type_id, transfer_id)
         # Value: {
         #   'payload': bytearray,
@@ -153,11 +154,11 @@ class TransferReassembler:
 
         return None
 
-    def _cleanup_stale_sessions(self, now: float, max_age: float = 2.0) -> None:
-        """Removes incomplete sessions older than max_age seconds."""
+    def _cleanup_stale_sessions(self, now: float) -> None:
+        """Removes incomplete sessions older than configured timeout."""
         stale_keys = [
             key for key, session in self.sessions.items()
-            if now - session['ts'] > max_age
+            if now - session['ts'] > self.session_timeout
         ]
         for key in stale_keys:
             logger.warning(f"[Reassembler] Cleaning up stale incomplete session {key}.")
