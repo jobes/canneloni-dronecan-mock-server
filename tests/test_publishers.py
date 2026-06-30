@@ -7,6 +7,7 @@ from publishers.fuel_tank import IceFuelTankPublisher
 from publishers.gnss import GNSSPublisher
 from publishers.heartbeat import HeartbeatPublisher
 from publishers.ice import IceReciprocatingPublisher
+from publishers.stork_engine_rpm import StorkEngineRPMPublisher
 
 
 class FakeClock:
@@ -151,6 +152,28 @@ class PublisherContractTests(unittest.TestCase):
             
             expected_percent = max(0, min(100, int(round((available_cm3 / 40000.0) * 100.0))))
             self.assertEqual(available_percent, expected_percent)
+
+    def test_stork_engine_rpm_publisher(self) -> None:
+        clock = FakeClock()
+        config = {
+            "interval": 0.1,
+            "engine_speed_rpm": {"min": 1000.0, "max": 2000.0},
+            "engine_load_percent": {"min": 20.0, "max": 50.0},
+        }
+        publisher = StorkEngineRPMPublisher(node_id=2, clock=clock, priority=4, config=config)
+
+        self.assertEqual(publisher.process(clock.now()), [])
+
+        clock.advance(0.1)
+        res = publisher.process(clock.now())
+        self.assertEqual(len(res), 1)
+        can_id, frame = res[0]
+        parsed = parse_can_id(can_id)
+        self.assertEqual(parsed["message_type_id"], 20120)
+        
+        # Verify single frame transfer: payload must be <= 7 bytes, tail byte is frame[-1]
+        self.assertLessEqual(len(frame), 8)
+        self.assertEqual(_tail_tid(frame), 0)
 
 
 if __name__ == "__main__":

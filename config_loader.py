@@ -21,6 +21,7 @@ class ServerConfig(TypedDict):
     heartbeat_interval: float
     gpx: str
     ice_reciprocating: dict[str, object]
+    stork_engine_rpm: dict[str, object]
     ice_fuel_tank: dict[str, object]
 
 
@@ -69,6 +70,14 @@ DEFAULT_CONFIG: ServerConfig = {
                 'lambda_coefficient': {'min': 0.85, 'max': 1.10},
             },
         ],
+    },
+    'stork_engine_rpm': {
+        'interval': 0.1,
+        'state': {'min': 0, 'max': 2},
+        'ecu_index': {'min': 0, 'max': 0},
+        'engine_load_percent': {'min': 10, 'max': 75},
+        'engine_speed_rpm': {'min': 700, 'max': 2400},
+        'throttle_position_percent': {'min': 8, 'max': 70},
     },
     'ice_fuel_tank': {
         'interval': 1.0,
@@ -193,6 +202,13 @@ def _validate_server_config(config: ServerConfig) -> None:
     if 'interval' in fuel_cfg:
         _validate_positive_float(cast(object, fuel_cfg['interval']), 'ice_fuel_tank.interval')
     _validate_min_max_ranges(cast(object, fuel_cfg), 'ice_fuel_tank')
+
+    stork_cfg = config.get('stork_engine_rpm', {})
+    if not isinstance(stork_cfg, Mapping):
+        raise ValueError('stork_engine_rpm must be a mapping')
+    if 'interval' in stork_cfg:
+        _validate_positive_float(cast(object, stork_cfg['interval']), 'stork_engine_rpm.interval')
+    _validate_min_max_ranges(cast(object, stork_cfg), 'stork_engine_rpm')
 
 
 def load_config(config_path: str) -> ServerConfig:

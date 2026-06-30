@@ -9,6 +9,8 @@ from constants import (
     DRONECAN_ICE_FUEL_TANK_STATUS_SIGNATURE,
     DRONECAN_ICE_RECIPROCATING_STATUS_DTID,
     DRONECAN_ICE_RECIPROCATING_STATUS_SIGNATURE,
+    DRONECAN_STORK_ENGINE_RPM_DTID,
+    DRONECAN_STORK_ENGINE_RPM_SIGNATURE,
 )
 from node import DroneCANMockNode
 from publishers.base import BasePublisher, ClockProtocol
@@ -16,6 +18,7 @@ from publishers.fuel_tank import IceFuelTankPublisher
 from publishers.gnss import GNSSPublisher
 from publishers.heartbeat import HeartbeatPublisher
 from publishers.ice import IceReciprocatingPublisher
+from publishers.stork_engine_rpm import StorkEngineRPMPublisher
 from reassembler import TransferReassembler
 from services.base import BaseServiceHandler
 from services.node_info import GetNodeInfoHandler
@@ -29,6 +32,7 @@ class NodeConfig:
     heartbeat_interval: float
     gpx_path: str
     ice_config: Mapping[str, object]
+    stork_engine_rpm_config: Mapping[str, object]
     fuel_tank_config: Mapping[str, object]
     reassembler_session_timeout: float
 
@@ -73,6 +77,15 @@ def _build_fuel_tank_publisher(config: NodeConfig, clock: ClockProtocol) -> Base
     )
 
 
+def _build_stork_engine_rpm_publisher(config: NodeConfig, clock: ClockProtocol) -> BasePublisher:
+    return StorkEngineRPMPublisher(
+        node_id=config.node_id,
+        clock=clock,
+        priority=config.priority,
+        config=config.stork_engine_rpm_config,
+    )
+
+
 def _build_get_node_info_handler(config: NodeConfig) -> tuple[int, BaseServiceHandler]:
     return DRONECAN_GETNODEINFO_DTID, GetNodeInfoHandler(node_id=config.node_id, node_name=config.node_name)
 
@@ -82,6 +95,7 @@ PUBLISHER_REGISTRY: tuple[PublisherBuilder, ...] = (
     _build_gnss_publisher,
     _build_ice_reciprocating_publisher,
     _build_fuel_tank_publisher,
+    _build_stork_engine_rpm_publisher,
 )
 
 SERVICE_REGISTRY: tuple[ServiceBuilder, ...] = (
@@ -92,6 +106,7 @@ REASSEMBLER_SIGNATURE_REGISTRY: dict[tuple[bool, int], int] = {
     (True, DRONECAN_GETNODEINFO_DTID): DRONECAN_GETNODEINFO_SIGNATURE,
     (False, DRONECAN_ICE_RECIPROCATING_STATUS_DTID): DRONECAN_ICE_RECIPROCATING_STATUS_SIGNATURE,
     (False, DRONECAN_ICE_FUEL_TANK_STATUS_DTID): DRONECAN_ICE_FUEL_TANK_STATUS_SIGNATURE,
+    (False, DRONECAN_STORK_ENGINE_RPM_DTID): DRONECAN_STORK_ENGINE_RPM_SIGNATURE,
 }
 
 
@@ -101,6 +116,7 @@ def build_default_publishers(
     heartbeat_interval: float,
     gpx_path: str,
     ice_config: Mapping[str, object],
+    stork_engine_rpm_config: Mapping[str, object],
     fuel_tank_config: Mapping[str, object],
     clock: ClockProtocol,
 ) -> Sequence[BasePublisher]:
@@ -111,6 +127,7 @@ def build_default_publishers(
         heartbeat_interval=heartbeat_interval,
         gpx_path=gpx_path,
         ice_config=ice_config,
+        stork_engine_rpm_config=stork_engine_rpm_config,
         fuel_tank_config=fuel_tank_config,
         reassembler_session_timeout=2.0,
     )
@@ -125,6 +142,7 @@ def build_default_service_handlers(node_id: int, node_name: str) -> dict[int, Ba
         heartbeat_interval=1.0,
         gpx_path='',
         ice_config={},
+        stork_engine_rpm_config={},
         fuel_tank_config={},
         reassembler_session_timeout=2.0,
     )

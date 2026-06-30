@@ -225,3 +225,23 @@ def build_ice_fuel_tank_status_payload(
     bw.write_unsigned(fuel_tank_id, 8)
 
     return bw.get_bytes()
+
+
+def build_stork_engine_rpm_payload(
+    state: int,
+    ecu_index: int,
+    engine_load_percent: int,
+    engine_speed_rpm: int,
+    throttle_position_percent: int,
+) -> bytes:
+    """
+    Serializes a stork.equipment.ice.EngineRPM message payload.
+    """
+    bw = BitWriter()
+    bw.write_unsigned(state, 2)
+    bw.write_unsigned(ecu_index, 6)
+    bw.write_unsigned(engine_load_percent, 7)
+    bw.write_unsigned(engine_speed_rpm, 17)
+    bw.write_unsigned(throttle_position_percent, 7)
+    return bw.get_bytes()
+

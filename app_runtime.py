@@ -136,6 +136,7 @@ async def run_server(config: ServerConfig) -> None:
         heartbeat_interval=config['heartbeat_interval'],
         gpx_path=config['gpx'],
         ice_config=config['ice_reciprocating'],
+        stork_engine_rpm_config=config['stork_engine_rpm'],
         fuel_tank_config=config['ice_fuel_tank'],
         reassembler_session_timeout=config['reassembler_session_timeout'],
     )

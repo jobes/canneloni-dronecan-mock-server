@@ -1,0 +1,9 @@
+#
+# Custom engine RPM and status message (fits in a single frame).
+#
+
+uint2 state
+uint6 ecu_index
+uint7 engine_load_percent
+uint17 engine_speed_rpm
+uint7 throttle_position_percent
