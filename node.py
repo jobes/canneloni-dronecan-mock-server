@@ -40,6 +40,13 @@ class DroneCANMockNode:
         self.allocator: DynamicNodeAllocator = DynamicNodeAllocator(self.node_id)
 
         self.publishers: Sequence[BasePublisher] = publishers
+        
+        # Link StorkEngineRPMPublisher to IceReciprocatingPublisher if both present
+        stork_publisher = next((p for p in self.publishers if p.__class__.__name__ == 'StorkEngineRPMPublisher'), None)
+        ice_publisher = next((p for p in self.publishers if p.__class__.__name__ == 'IceReciprocatingPublisher'), None)
+        if ice_publisher and stork_publisher:
+            setattr(ice_publisher, 'stork_rpm_provider', stork_publisher)
+
         self.service_handlers: dict[int, BaseServiceHandler] = service_handlers
         self.reassembler: TransferReassembler = reassembler
 

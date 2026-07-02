@@ -29,6 +29,7 @@ class IceReciprocatingPublisher(BasePublisher):
         self.last_send: float = 0.0
         self.can_id: int = build_message_can_id(self.priority, DRONECAN_ICE_RECIPROCATING_STATUS_DTID, self.node_id)
         self._rng: random.Random = random.Random((self.node_id << 8) ^ 0x5A17)
+        self.stork_rpm_provider: Any | None = None
 
     def get_uptime_sec(self) -> int:
         return self.clock.get_uptime_sec()
@@ -60,11 +61,22 @@ class IceReciprocatingPublisher(BasePublisher):
         return float(cast(float | int | str, value))
 
     def _sample_status(self) -> dict[str, int | float]:
+        engine_speed_rpm = self._sample_int('engine_speed_rpm', 0, 10000)
+        if self.stork_rpm_provider is not None:
+            # Ensure StorkEngineRPMPublisher has initialized current_rpm
+            if getattr(self.stork_rpm_provider, 'current_rpm', None) is None:
+                if hasattr(self.stork_rpm_provider, '_update_smooth_values'):
+                    self.stork_rpm_provider._update_smooth_values()
+            
+            stork_rpm = getattr(self.stork_rpm_provider, 'current_rpm', None)
+            if stork_rpm is not None:
+                engine_speed_rpm = int(round(stork_rpm))
+
         return {
             'state': self._sample_int('state', 0, 2),
             'flags': self._sample_int('flags', 0, 0),
             'engine_load_percent': self._sample_int('engine_load_percent', 0, 127),
-            'engine_speed_rpm': self._sample_int('engine_speed_rpm', 0, 10000),
+            'engine_speed_rpm': engine_speed_rpm,
             'spark_dwell_time_ms': self._sample_float('spark_dwell_time_ms', 0.0, 0.0),
             'atmospheric_pressure_kpa': self._sample_float('atmospheric_pressure_kpa', 0.0, 0.0),
             'intake_manifold_pressure_kpa': self._sample_float('intake_manifold_pressure_kpa', 0.0, 0.0),

@@ -110,6 +110,43 @@ class PublisherContractTests(unittest.TestCase):
         _, frame2 = second[0]
         self.assertEqual(_tail_tid(frame2), 1)
 
+    def test_ice_publisher_uses_stork_rpm(self) -> None:
+        from node import DroneCANMockNode
+        from reassembler import TransferReassembler
+        clock = FakeClock()
+        stork_config = {
+            "interval": 0.1,
+            "engine_speed_rpm": 1850,
+        }
+        ice_config = {
+            "interval": 1.0,
+            "engine_speed_rpm": 1000,
+        }
+        stork_pub = StorkEngineRPMPublisher(node_id=2, clock=clock, priority=4, config=stork_config)
+        ice_pub = IceReciprocatingPublisher(node_id=2, clock=clock, priority=4, config=ice_config)
+        
+        # Instantiate DroneCANMockNode to trigger linking
+        _node = DroneCANMockNode(
+            node_id=2,
+            node_name="test_node",
+            priority=4,
+            clock=clock,
+            publishers=[stork_pub, ice_pub],
+            service_handlers={},
+            reassembler=TransferReassembler({}, session_timeout=2.0)
+        )
+
+        self.assertEqual(ice_pub.stork_rpm_provider, stork_pub)
+
+        # Force sample/update from stork
+        clock.advance(1.0)
+        res_stork = stork_pub.process(clock.now())
+        self.assertTrue(res_stork)
+
+        # Now sample ice
+        sampled_status = ice_pub._sample_status()
+        self.assertEqual(sampled_status['engine_speed_rpm'], 1850)
+
     def test_fuel_tank_publisher_interval_and_tid(self) -> None:
         clock = FakeClock()
         publisher = IceFuelTankPublisher(node_id=2, clock=clock, priority=4, config={"interval": 1.0})
