@@ -1,0 +1,12 @@
+#
+# VHF Radio fast status message.
+#
+
+uint8 radio_instance         # 0 = COM1, 1 = COM2...
+
+uint8 FLAG_TX          = 1   # Transmitter is active (PTT on)
+uint8 FLAG_RX          = 2   # Receiver is active (squelch open, signal detected)
+uint8 FLAG_DUAL_ACTIVE = 4   # Dual watch/dual reception is active
+uint8 FLAG_GENERAL_ERROR = 8 # General hardware error / transmitter failure or warning
+uint8 flags                  # Bitmask of active flags above
+

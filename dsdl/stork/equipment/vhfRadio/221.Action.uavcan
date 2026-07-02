@@ -1,0 +1,31 @@
+#
+# VHF Radio Action command.
+#
+
+uint8 radio_instance                 # 0 = COM1, 1 = COM2...
+
+uint8 ACTION_FLIP              = 1   # Swap active and standby frequencies
+uint8 ACTION_DUAL_TOGGLE       = 2   # Toggle dual watch / dual reception mode
+uint8 ACTION_PTT_ON            = 3   # Transmission activation (digital PTT)
+uint8 ACTION_PTT_OFF           = 4   # Transmission deactivation
+uint8 ACTION_SET_STANDBY_FREQ  = 5   # Set standby frequency and name
+uint8 ACTION_SET_ACTIVE_FREQ   = 6   # Set active frequency and name
+uint8 ACTION_SET_VOLUME        = 7   # Set volume
+uint8 ACTION_SET_SQUELCH       = 8   # Set squelch level
+uint8 ACTION_SET_VOX           = 9   # Set VOX threshold level
+uint8 ACTION_SET_INTERCOM      = 10  # Set Intercom volume level
+uint8 ACTION_SET_MIC_GAIN      = 11  # Set Microphone gain level
+uint8 action                         # Action to perform (one of the ACTION_* constants)
+
+uint7 level                          # Level in percent (used for ACTION_SET_VOLUME, ACTION_SET_SQUELCH, ACTION_SET_VOX, ACTION_SET_INTERCOM, and ACTION_SET_MIC_GAIN, 0 to 100)
+uint3 index                          # Index of the target item (e.g., microphone index 0-7 for ACTION_SET_MIC_GAIN)
+
+uint18 frequency_khz                 # Frequency in kHz (used for ACTION_SET_*)
+uint8[<=20] frequency_name           # Station name (used for ACTION_SET_*)
+
+
+---
+
+uint8 STATUS_OK           = 0
+uint8 STATUS_ERROR        = 1
+uint8 status                    # Status of the action execution

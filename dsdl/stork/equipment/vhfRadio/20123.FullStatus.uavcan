@@ -1,0 +1,25 @@
+#
+# VHF Radio full status message.
+#
+
+uint8 radio_instance              # 0 = COM1, 1 = COM2...
+
+uint18 active_frequency_khz       # Active frequency in kHz (e.g., 118000 to 136975)
+uint18 standby_frequency_khz      # Standby frequency in kHz (e.g., 118000 to 136975)
+
+uint8 FLAG_TX          = 1        # Transmitter is active (PTT on)
+uint8 FLAG_RX          = 2        # Receiver is active (squelch open, signal detected)
+uint8 FLAG_DUAL_ACTIVE = 4        # Dual watch/dual reception is active
+uint8 FLAG_GENERAL_ERROR = 8      # General hardware error / transmitter failure or warning
+uint8 flags                       # Bitmask of active flags above
+
+uint7 volume                      # Volume level in percent (0 to 100)
+uint7 squelch                     # Squelch level in percent (0 to 100)
+uint7 vox                         # VOX threshold level in percent (0 to 100)
+uint7 intercom                    # Intercom volume level in percent (0 to 100)
+uint7[<=8] mic_gain               # Microphone gain levels in percent (0 to 100) for up to 8 microphones
+
+
+
+uint8[<=20] active_station_name   # Name of the active station (ASCII, max 20 characters)
+uint8[<=20] standby_station_name  # Name of the standby station (ASCII, max 20 characters)
